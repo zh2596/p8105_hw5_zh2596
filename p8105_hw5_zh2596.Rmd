@@ -10,14 +10,232 @@ library(tidyverse)
 library(ggplot2)
 ```
 
-## Problem 0
-
-
-
 ## Problem 1
 
+Import the dataset first.
 
+```{r}
+homicide = read.csv("data/homicide-data.csv")
+```
+
+The raw data the victim's demographic information and the geographic location in which the homicide occurs, along with the status of whether the homicide case is solved or not.
+
+Create a `city_state` variable and count the total number of homicides within cities.
+
+```{r}
+homicide =
+  homicide |>
+  mutate(city_state = paste(city, state, sep=", "))
+
+homicide |>
+  group_by(city) |>
+  summarise(total_homicides = n())
+```
+
+Count the total number of homicides within cities.
+
+```{r}
+homicide |>
+  filter(disposition %in% c('Closed without arrest', 'Open/No arrest')) |>
+  group_by(city) |>
+  summarise(total_homicides = n())
+```
+
+Use the prop.test function to estimate the proportion of homicides that are unsolved, and apply `broom::tidy`.
+
+```{r}
+all_case = 
+  homicide |>
+  filter(city_state == "Baltimore, MD") |>
+  summarize(n())
+
+unsolved_case = 
+  homicide |>
+  filter(city_state == "Baltimore, MD" & 
+         disposition %in% c('Closed without arrest', 'Open/No arrest')) |>
+  summarize(n())
+
+prop = prop.test(as.numeric(unsolved_case), as.numeric(all_case))
+
+prop_df = broom::tidy(prop)
+```
+
+The estimated proportion is `r prop_df$estimate`, and the confidence interval is (`r prop_df$conf.low`, `r prop_df$conf.high`).
+
+Create a list of all cities' names in the dataset
+
+```{r}
+l = list()
+
+for (i in unique(homicide$city_state)){
+  l[[i]]= i
+}
+```
+
+Create a function that automates the process of extracting proportions of unsolved cases and confidence intervals
+
+```{r}
+prop_of_unsolved_by_city = function(a) {
+  all_case = 
+    homicide |>
+    filter(city_state == a) |>
+    summarize(n())
+
+  unsolved_case = 
+    homicide |>
+    filter(city_state ==  a & 
+           disposition %in% c('Closed without arrest', 'Open/No arrest')) |>
+    summarize(n())
+  
+  prop = prop.test(as.numeric(unsolved_case), as.numeric(all_case))
+
+  prop_df = broom::tidy(prop)
+
+  tibble(a,
+       prop_estimate = as.numeric(prop_df$estimate), 
+       prop_CI_low = as.numeric(prop_df$conf.low),
+       prop_CI_high = as.numeric(prop_df$conf.high)
+  )
+  }
+```
+
+Create a tidy dataframe with estimated proportions and CIs for each city.
+
+```{r, warning=FALSE}
+df_m = unnest(tibble(purrr::map(l, prop_of_unsolved_by_city)))
+```
+
+Create a plot that shows the estimates and CIs for each city
+
+```{r}
+ggplot(data = df_m, aes(x = a, y = prop_estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=prop_CI_low, ymax=prop_CI_high))
+```
 
 ## Problem 2
 
+Create a dataframe containing all file names and iterate over file names and read in data for each subject using `purrr::map` and saving the result as a new variable in the dataframe
 
+```{r}
+problem2_df =
+  tibble(
+    file_name = list.files("hw5_data"),
+    file_path = paste0("hw5_data/",file_name),
+    df_info = map(file_path, read.csv)
+  ) |>
+  unnest(df_info) |>
+  mutate(
+    arm = substr(file_name, 0, 3),
+    arm = case_match(
+      arm,
+        "con" ~ "control arm",
+        "exp" ~ "experiment arm"
+      ),
+    ID = substr(file_name, 5, 6)
+  ) |>
+  pivot_longer(
+    week_1: week_8,
+    names_to = "Week",
+    values_to = "Observation"
+  ) |>
+  select(-file_name, -file_path)
+```
+
+Create a spaghetti plot 
+
+```{r}
+ggplot(problem2_df, aes(x=Week, y=Observation, group=ID, color=ID)) + 
+  geom_point() +
+  geom_line() +
+  facet_grid(~arm) +
+  labs(
+    title = "Observations for 10 Subjects over 8 Weeks from Control Arm and Experiment Arm"
+  )
+```
+
+From the plot, it can be observed that subjects in the experiment arm tends to have higher observation value than that of the control arm, with an increasing tendency over time.
+
+## Problem 3
+
+Define a function that generates the value of $mu_hat$ and p-value.
+
+```{r}
+mean_and_t_test = function(num=30, mu, sigma=5) {
+  
+  sim_data = tibble(
+    x = rnorm(n=num, mean=mu, sd = sigma),
+  )
+  
+  sim_data |> 
+    summarize(
+      mu_hat = mean(x),
+      p_value = broom::tidy(t.test(x))$p.value
+    )
+}
+```
+
+Apply the function above for $\mu$ from 0 to 6.
+
+```{r}
+
+# Manually define a function for creating a dataset that
+# saves the value of mu_hat and p-value for different mu_hat's value
+create_sim_normal_df = function(mu_hat){
+
+sim_normal_df = tibble(mu = NA, mu_hat = NA, p.value = NA)
+
+for (i in 1:5000){
+  sim_normal_df = 
+    sim_normal_df %>% 
+      add_row(mu = mu_hat, 
+        mu_hat = as.numeric(mean_and_t_test(mu = mu_hat)[1]),
+        p.value = as.numeric(mean_and_t_test(mu = mu_hat)[2]))
+}
+
+sim_normal_df =
+  sim_normal_df |>
+  drop_na()
+}
+
+# Execute the function
+sim_normal_df =
+  rbind(create_sim_normal_df(0), create_sim_normal_df(1), create_sim_normal_df(2),
+        create_sim_normal_df(3), create_sim_normal_df(4), create_sim_normal_df(5),
+        create_sim_normal_df(6))
+```
+
+Make a plot showing the proportion of times the null was rejected (the power of the test) on the y axis and the true value of $\mu$ on the x axis
+
+```{r}
+sim_normal_df |>
+  group_by(mu) |>
+  summarise(power_of_test = sum(p.value < 0.05)/n()) |>
+  ggplot(aes(x = mu, y = power_of_test)) +
+  geom_point()
+```
+
+It can be observed that as the effect size increases, the power of test also increases.
+
+Make a plot showing the average estimate of $\mu$ on the y axis and the true value of $\mu$ on the x axis
+
+```{r}
+sim_normal_df |>
+  group_by(mu) |>
+  summarise(mean_mu_hat = mean(mu_hat)) |>
+  ggplot(aes(x = mu, y = mean_mu_hat)) +
+  geom_point()
+```
+
+Make another plot showing the average estimate of $\mu$ only in samples for which the null was rejected on the y axis and the true value of $\mu$ on the x axis
+
+```{r}
+sim_normal_df |>
+  filter(p.value < 0.05) |>
+  group_by(mu) |>
+  summarise(mean_mu_hat = mean(mu_hat)) |>
+  ggplot(aes(x = mu, y = mean_mu_hat)) +
+  geom_point()
+```
+
+the sample average of $\mu$ across tests for which the null is rejected is approximately equal to the true value of $\mu$ because at the level of $\alpha = 0.05$, the sample size is large enough for the estimated $\mu_hat$ to have a tendency of being unbiased (which is, the average value, or $E[\mu]$, is equal to the true value of $\mu$).
