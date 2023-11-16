@@ -212,7 +212,8 @@ sim_normal_df |>
   group_by(mu) |>
   summarise(power_of_test = sum(p.value < 0.05)/n()) |>
   ggplot(aes(x = mu, y = power_of_test)) +
-  geom_point()
+  geom_point() +
+  geom_line()
 ```
 
 It can be observed that as the effect size increases, the power of test also increases.
@@ -224,7 +225,8 @@ sim_normal_df |>
   group_by(mu) |>
   summarise(mean_mu_hat = mean(mu_hat)) |>
   ggplot(aes(x = mu, y = mean_mu_hat)) +
-  geom_point()
+  geom_point() +
+  geom_line()
 ```
 
 Make another plot showing the average estimate of $\mu$ only in samples for which the null was rejected on the y axis and the true value of $\mu$ on the x axis
@@ -235,7 +237,8 @@ sim_normal_df |>
   group_by(mu) |>
   summarise(mean_mu_hat = mean(mu_hat)) |>
   ggplot(aes(x = mu, y = mean_mu_hat)) +
-  geom_point()
+  geom_point() +
+  geom_line()
 ```
 
 the sample average of $\mu$ across tests for which the null is rejected is approximately equal to the true value of $\mu$ because at the level of $\alpha = 0.05$, the sample size is large enough for the estimated $\mu_hat$ to have a tendency of being unbiased (which is, the average value, or $E[\mu]$, is equal to the true value of $\mu$).
